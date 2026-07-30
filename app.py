@@ -1,12 +1,10 @@
 """
-
 Currency and Travel Budget Planner - Streamlit UI.
 Wires together CurrencyConverter, TripBudget, Expense, BudgetReport,
 the holiday checker, and the AI advice helper.
 """
 
 import streamlit as st
-import requests
 from datetime import date
 
 from converter import CurrencyConverter
@@ -14,7 +12,7 @@ from trip_budget import TripBudget
 from expense import Expense, parse_expense_text
 from budget_report import BudgetReport
 from holidays import get_holidays_in_range
-from advice import get_travel_advice
+from advice import AIAdvisor
 
 COUNTRY_CODES = {
     "United States": "US",
@@ -62,21 +60,25 @@ with st.form("trip_setup_form"):
     with col1:
         destination = st.selectbox("Destination country", list(COUNTRY_CODES.keys()))
         start_date = st.date_input("Start date", value=date.today())
-        currency = st.text_input("Trip currency code (3 letters)", value="USD")
+        currency = st.text_input("Destination currency code (3 letters)", value="USD")
     with col2:
         end_date = st.date_input("End date", value=date.today())
         total_budget = st.number_input("Total budget", min_value=0.0, value=1000.0, step=50.0)
+        home_currency = st.text_input("Your home currency code (3 letters)", value="NGN")
 
     setup_submitted = st.form_submit_button("Create Trip")
 
 if setup_submitted:
     currency = currency.strip().upper()
+    home_currency = home_currency.strip().upper()
     if not converter.is_valid_code(currency):
-        st.error("Currency code must be exactly 3 uppercase letters, like USD or EUR.")
+        st.error("Destination currency code must be exactly 3 uppercase letters, like USD or EUR.")
+    elif not converter.is_valid_code(home_currency):
+        st.error("Home currency code must be exactly 3 uppercase letters, like NGN or USD.")
     elif end_date < start_date:
         st.error("End date cannot be before the start date.")
     else:
-        st.session_state.trip = TripBudget(destination, start_date, end_date, total_budget, currency)
+        st.session_state.trip = TripBudget(destination, start_date, end_date, total_budget, currency, home_currency)
         st.success(f"Trip to {destination} created.")
 
 trip = st.session_state.trip
@@ -89,6 +91,7 @@ if trip:
     col1.metric("Total Budget", f"{trip.total_budget:.2f} {trip.currency}")
     col2.metric("Trip Length", f"{trip.number_of_days()} days")
     col3.metric("Daily Limit", f"{trip.daily_limit():.2f} {trip.currency}")
+    st.caption(f"Home currency: {trip.home_currency}")
 
     # --- SECTION 2: Currency Converter ---
     st.header("2. Currency Converter")
@@ -199,16 +202,26 @@ if trip:
         st.info("Enter a Gemini API key in the sidebar to get travel advice.")
     else:
         if st.button("Get Travel Advice"):
+            trip_details = {
+                "trip_name": f"Trip to {trip.destination}",
+                "home_currency": trip.home_currency,
+                "dest_currency": trip.currency,
+                "total_budget": trip.total_budget,
+                "duration_days": trip.number_of_days(),
+                "daily_limit": trip.daily_limit(),
+                "total_spent": trip.total_spent(),
+                "remaining": trip.remaining_budget(),
+                "country": trip.destination,
+            }
             try:
                 with st.spinner("Getting advice..."):
-                    advice = get_travel_advice(
-                        trip.destination, trip.total_budget, trip.currency, trip.number_of_days(), gemini_api_key
-                    )
+                    advisor = AIAdvisor(gemini_api_key)
+                    advice = advisor.get_advice(trip_details)
                 st.write(advice)
-            except requests.exceptions.RequestException as error:
-                st.error(f"Network problem while contacting Gemini: {error}")
-            except (KeyError, IndexError):
-                st.error("Got a response back from Gemini but could not read it. Try again.")
+            except ValueError as error:
+                st.error(str(error))
+            except ConnectionError as error:
+                st.error(f"Could not reach Gemini: {error}")
 
 else:
     st.info("Fill out the trip setup form above to get started.")
