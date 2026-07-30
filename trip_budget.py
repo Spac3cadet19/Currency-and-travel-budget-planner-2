@@ -6,9 +6,16 @@ holding the list of expenses for a trip.
 
 
 class TripBudget:
-    """Tracks the trip details, the expense list, and daily spending math."""
+    """Tracks the trip details, the expense list, and daily spending math.
 
-    def __init__(self, destination, start_date, end_date, total_budget, currency):
+    `currency` is the destination currency — the one the budget, daily
+    limit, and expenses are tracked in. `home_currency` is the traveler's
+    own currency, kept separately so it can be shown alongside the
+    destination currency (e.g. in the AI travel advice prompt) without
+    mixing the two.
+    """
+
+    def __init__(self, destination, start_date, end_date, total_budget, currency, home_currency):
         if total_budget < 0:
             raise ValueError("Total budget cannot be negative.")
         if end_date < start_date:
@@ -19,6 +26,7 @@ class TripBudget:
         self.end_date = end_date
         self.total_budget = total_budget
         self.currency = currency
+        self.home_currency = home_currency
         self.expenses = []
 
     def add_expense(self, expense):
